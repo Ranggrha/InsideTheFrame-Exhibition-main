@@ -41,8 +41,12 @@ bool isCursorLocked = true;
 bool tabKeyPressed  = false;
 
 // ─── Key-press state for debounced bindings ───────────────────────────────────
-bool lKeyPressed = false;
-bool qKeyPressed = false;
+bool lKeyPressed  = false;
+bool qKeyPressed  = false;
+bool f1KeyPressed = false;
+bool f2KeyPressed = false;
+bool f3KeyPressed = false;
+bool f4KeyPressed = false;
 
 // ─── Lighting manager (global for callback access) ────────────────────────────
 LightingManager gLighting;
@@ -111,6 +115,50 @@ void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
         if (!qKeyPressed) { gLighting.cycleQualityDown(); qKeyPressed = true; }
     } else { qKeyPressed = false; }
+
+    // F1 — set quality LOW
+    if (glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS) {
+        if (!f1KeyPressed) {
+            gLighting.quality   = LightingQuality::LOW;
+            gLighting.shadowsOn = false;
+            std::cout << "[Lighting] Quality set to: LOW (F1)\n";
+            f1KeyPressed = true;
+        }
+    } else { f1KeyPressed = false; }
+
+    // F2 — set quality MEDIUM
+    if (glfwGetKey(window, GLFW_KEY_F2) == GLFW_PRESS) {
+        if (!f2KeyPressed) {
+            gLighting.quality   = LightingQuality::MEDIUM;
+            gLighting.shadowsOn = false;
+            std::cout << "[Lighting] Quality set to: MEDIUM (F2)\n";
+            f2KeyPressed = true;
+        }
+    } else { f2KeyPressed = false; }
+
+    // F3 — set quality HIGH (enables shadows if FBO is initialised)
+    if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS) {
+        if (!f3KeyPressed) {
+            gLighting.quality   = LightingQuality::HIGH;
+            gLighting.shadowsOn = gLighting.shadowMap.initialized;
+            std::cout << "[Lighting] Quality set to: HIGH (F3)";
+            if (!gLighting.shadowMap.initialized) std::cout << "  [shadows unavailable — FBO not created]";
+            std::cout << "\n";
+            f3KeyPressed = true;
+        }
+    } else { f3KeyPressed = false; }
+
+    // F4 — set quality ULTRA (enables shadows if FBO is initialised)
+    if (glfwGetKey(window, GLFW_KEY_F4) == GLFW_PRESS) {
+        if (!f4KeyPressed) {
+            gLighting.quality   = LightingQuality::ULTRA;
+            gLighting.shadowsOn = gLighting.shadowMap.initialized;
+            std::cout << "[Lighting] Quality set to: ULTRA (F4)";
+            if (!gLighting.shadowMap.initialized) std::cout << "  [shadows unavailable — FBO not created]";
+            std::cout << "\n";
+            f4KeyPressed = true;
+        }
+    } else { f4KeyPressed = false; }
 
     // WASD movement
     if (isCursorLocked) {
@@ -351,7 +399,11 @@ int main() {
     std::cout << "\n[InsideTheFrame] Controls:\n"
               << "  WASD + Mouse : Navigate\n"
               << "  L            : Cycle light preset (Candlelight / Fluorescent / Daylight)\n"
-              << "  Q            : Lower lighting quality (debug)\n"
+              << "  F1           : Quality LOW     (no shadows, 4 lights)\n"
+              << "  F2           : Quality MEDIUM  (no shadows, 6 lights)\n"
+              << "  F3           : Quality HIGH    (shadows + PCF, 8 lights)\n"
+              << "  F4           : Quality ULTRA   (shadows + PCF, 8 lights, max res)\n"
+              << "  Q            : Step quality down one level\n"
               << "  TAB          : Toggle cursor\n"
               << "  F11          : Fullscreen\n"
               << "  ESC          : Quit\n\n";
