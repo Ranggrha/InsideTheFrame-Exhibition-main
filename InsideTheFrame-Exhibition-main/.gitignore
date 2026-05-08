@@ -1,0 +1,15 @@
+# Mengabaikan folder build CMake
+build/
+out/
+
+# Mengabaikan file eksekusi dan binary
+*.exe
+*.dll
+*.so
+*.dylib
+*.o
+*.obj
+
+# Mengabaikan folder konfigurasi editor (opsional)
+.vscode/
+.vs/
