@@ -88,8 +88,7 @@ public:
     }
 
     // ── Draw ─────────────────────────────────────────────────────────────────
-    // Shader must have: uniform mat4 model; uniform sampler2D artworkTex;
-    //                   uniform int useTexture; uniform int highlighted;
+    // Shader uniforms: model, useTexture, highlighted, boardFaceAspect, artworkTex
     void draw(unsigned int shaderProgram) const {
         glm::mat4 model = modelMatrix();
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"),
@@ -99,11 +98,16 @@ public:
         glUniform1i(glGetUniformLocation(shaderProgram, "highlighted"),
                     highlighted ? 1 : 0);
 
-        if (hasTexture) {
-            glActiveTexture(GL_TEXTURE2);   // unit 2 = artwork (0=diffuse, 1=shadow)
-            glBindTexture(GL_TEXTURE_2D, textureId);
-            glUniform1i(glGetUniformLocation(shaderProgram, "artworkTex"), 2);
-        }
+        // Front face aspect = local X extent / local Y extent.
+        // After rotY=±90°, local X maps to world ±Z (along wall = the width),
+        // local Y stays vertical, local Z becomes the depth into/out of wall.
+        float faceAspect = (scale.y > 0.001f) ? (scale.x / scale.y) : 1.0f;
+        glUniform1f(glGetUniformLocation(shaderProgram, "boardFaceAspect"), faceAspect);
+
+        // Always bind artworkTex to unit 2 so textureSize() in the shader works
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, hasTexture ? textureId : 0);
+        glUniform1i(glGetUniformLocation(shaderProgram, "artworkTex"), 2);
 
         glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -203,28 +207,28 @@ inline std::vector<ExhibitionBoard> createExhibitionBoards(
     // Left wall (X=-10) faces +X (rotY=90), right wall (X=+10) faces -X (rotY=-90)
     static const BoardDef defs[] = {
         // Left wall boards (facing inward = +X direction)
-        { {-9.7f, 2.0f, -12.0f},  90.0f, {0.15f, 2.2f, 3.0f}, 0,
+        { {-9.85f, 2.0f, -12.0f},  90.0f, {3.0f, 2.2f, 0.15f}, 0,
           "Luminous Void",
           "Oil on canvas — exploring the tension between darkness and emerging light." },
 
-        { {-9.7f, 2.0f,   0.0f},  90.0f, {0.15f, 2.2f, 3.5f}, 1,
+        { {-9.85f, 2.0f,   0.0f},  90.0f, {3.5f, 2.2f, 0.15f}, 1,
           "Urban Fragments",
           "Mixed media — deconstructed city textures layered with archival photographs." },
 
-        { {-9.7f, 2.0f,  12.0f},  90.0f, {0.15f, 2.2f, 3.0f}, 2,
+        { {-9.85f, 2.0f,  12.0f},  90.0f, {3.0f, 2.2f, 0.15f}, 2,
           "Threshold",
           "Digital print — liminal spaces and the geometry of transition." },
 
         // Right wall boards (facing inward = -X direction)
-        { { 9.7f, 2.0f, -12.0f}, -90.0f, {0.15f, 2.2f, 3.0f}, 3,
+        { { 9.85f, 2.0f, -12.0f}, -90.0f, {3.0f, 2.2f, 0.15f}, 3,
           "Resonance",
           "Acrylic on board — sound waves rendered as colour fields." },
 
-        { { 9.7f, 2.0f,   0.0f}, -90.0f, {0.15f, 2.2f, 3.5f}, 4,
+        { { 9.85f, 2.0f,   0.0f}, -90.0f, {3.5f, 2.2f, 0.15f}, 4,
           "Soft Architecture",
           "Photography — built environments softened by long exposure and mist." },
 
-        { { 9.7f, 2.0f,  12.0f}, -90.0f, {0.15f, 2.2f, 3.0f}, 5,
+        { { 9.85f, 2.0f,  12.0f}, -90.0f, {3.0f, 2.2f, 0.15f}, 5,
           "Chromatic Field",
           "Watercolour on paper — gradients as emotional landscape." },
     };

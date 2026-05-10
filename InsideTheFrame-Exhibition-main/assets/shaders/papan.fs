@@ -1,11 +1,11 @@
 // =============================================================================
 //  papan.fs — Exhibition Board fragment shader
 //
-//  New features:
-//   • Artwork texture  (useTexture=1 → sample artworkTex; 0 → white panel)
-//   • Highlight mode   (highlighted=1 → gold border + brightness boost)
-//   • Same PCF shadow + Blinn-Phong multi-light as room shader
-//   • Tone mapping (Reinhard) + gamma 2.2
+//  Features:
+//   • Artwork texture  (useTexture=1 → artworkTex; 0 → white panel)
+//   • Aspect-correct UV  — artwork fills frame without stretching (cover mode)
+//   • Highlight mode   (highlighted=1 → animated gold border)
+//   • PCF shadow + Blinn-Phong multi-light, tone mapping, gamma 2.2
 // =============================================================================
 #version 330 core
 
@@ -20,10 +20,11 @@ uniform vec3  viewPos;
 uniform float time;
 uniform int   shadowsEnabled;
 uniform int   lightingQuality;
-uniform sampler2D shadowMap;     // unit 1
-uniform sampler2D artworkTex;    // unit 2 — artwork image
-uniform int   useTexture;        // 1 = sample artworkTex, 0 = white panel
-uniform int   highlighted;       // 1 = draw gold interaction highlight
+uniform sampler2D shadowMap;       // unit 1
+uniform sampler2D artworkTex;      // unit 2 — artwork image
+uniform int   useTexture;          // 1 = sample artworkTex, 0 = white panel
+uniform int   highlighted;         // 1 = draw gold interaction highlight
+uniform float boardFaceAspect;     // width/height of the board's visible face
 
 struct PointLight {
     vec3  position;
@@ -73,13 +74,63 @@ float highlightBorder(vec2 uv, float thickness) {
     return clamp(edge.x + edge.y, 0.0, 1.0);
 }
 
+// ─── containUV — aspect-correct UV mapping (object-fit: contain / mat mode) ──────
+//
+// The image is scaled to fit entirely within the frame, keeping its own
+// proportions unchanged.  Empty space around the image is left as a white mat.
+//
+//   boardFaceAspect = frame width / frame height  (passed as uniform)
+//   Image wider than frame  → fits width, white mat top+bottom
+//   Image taller than frame → fits height, white mat left+right
+//   Square / matching aspect → fills frame exactly, no mat
+//
+// Returns: xy = texture UV to sample
+//          w  = 1.0 if pixel is inside the image, 0.0 if in the white mat
+vec4 containUV(vec2 uv) {
+    vec2  texPx     = vec2(textureSize(artworkTex, 0));
+    float texAspect = texPx.x / texPx.y;
+
+    // How large is the image inside the [0,1] UV frame?
+    // One axis fills to 1.0, the other shrinks to preserve aspect ratio.
+    vec2 imageSize;
+    if (texAspect > boardFaceAspect) {
+        // Image wider than frame: width = 1.0, height shrinks
+        imageSize = vec2(1.0, boardFaceAspect / texAspect);
+    } else {
+        // Image taller (or equal): height = 1.0, width shrinks
+        imageSize = vec2(texAspect / boardFaceAspect, 1.0);
+    }
+
+    // Centred offset (white mat bands)
+    vec2 margin  = (1.0 - imageSize) * 0.5;
+    vec2 localUV = uv - margin;
+
+    // Is this fragment inside the image rectangle?
+    bool inside = (localUV.x >= 0.0 && localUV.x <= imageSize.x &&
+                   localUV.y >= 0.0 && localUV.y <= imageSize.y);
+
+    // Map local coords to [0,1] texture space
+    vec2 texUV = clamp(localUV / imageSize, 0.0, 1.0);
+
+    return vec4(texUV, 0.0, inside ? 1.0 : 0.0);
+}
+
+
 void main() {
-    // ── Albedo: artwork texture or white panel ───────────────────────────────
+    // ── Albedo: artwork texture (contain/mat mode) or white panel ─────────────
     vec3 albedo;
     if (useTexture == 1) {
-        albedo = texture(artworkTex, TexCoord).rgb;
+        // containUV: image centred, own proportions kept, white mat around it
+        vec4 cont = containUV(TexCoord);
+        if (cont.w > 0.5) {
+            // Inside the image — sample the texture
+            albedo = texture(artworkTex, cont.xy).rgb;
+        } else {
+            // Outside the image — white mat (museum-style)
+            albedo = vec3(0.97, 0.97, 0.97);
+        }
     } else {
-        albedo = vec3(0.97, 0.97, 0.97);   // clean white panel
+        albedo = vec3(0.97, 0.97, 0.97);   // plain white panel
     }
 
     // ── Highlight: gold border + brightness boost ────────────────────────────
