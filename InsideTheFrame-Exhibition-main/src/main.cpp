@@ -1,14 +1,17 @@
 // =============================================================================
 //  main.cpp — InsideTheFrame Virtual Exhibition
-//  Advanced Lighting System Edition
+//  Collision Detection & Texture Mapping Edition
 //
 //  Key bindings:
-//    WASD        — Move camera
+//    WASD        — Move camera (with wall collision)
 //    Mouse       — Look around
+//    E           — Interact with nearest exhibition board
+//    G           — Toggle collision debug wireframes
 //    TAB         — Toggle cursor lock
 //    F11         — Toggle fullscreen
-//    L           — Cycle light falloff preset (Candlelight → Fluorescent → Daylight)
+//    L           — Cycle light falloff preset
 //    Q           — Lower lighting quality one step (debug)
+//    F1-F4       — Set quality LOW/MEDIUM/HIGH/ULTRA
 //    ESC         — Quit
 // =============================================================================
 
@@ -19,11 +22,16 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <algorithm>
+#include <vector>
+#include <string>
 
 #include "Camera.h"
 #include "Board.h"
 #include "Shader.h"
 #include "LightingManager.h"
+#include "CollisionSystem.h"
+#include "TextureManager.h"
+#include "ExhibitionBoard.h"
 
 // ─── Camera & window state ────────────────────────────────────────────────────
 Camera camera(glm::vec3(0.0f, 1.5f, 18.0f));
@@ -47,6 +55,13 @@ bool f1KeyPressed = false;
 bool f2KeyPressed = false;
 bool f3KeyPressed = false;
 bool f4KeyPressed = false;
+bool eKeyPressed  = false;   // interact
+bool gKeyPressed  = false;   // debug toggle
+
+// ─── Global systems ───────────────────────────────────────────────────────────
+CollisionSystem gCollision;
+bool  debugWireframe = false;
+int   highlightedBoard = -1;   // index of currently highlighted board (-1 = none)
 
 // ─── Lighting manager (global for callback access) ────────────────────────────
 LightingManager gLighting;
@@ -160,12 +175,21 @@ void processInput(GLFWwindow* window) {
         }
     } else { f4KeyPressed = false; }
 
-    // WASD movement
+    // G — toggle debug wireframes
+    if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
+        if (!gKeyPressed) { debugWireframe = !debugWireframe;
+            std::cout << "[Debug] Wireframe: " << (debugWireframe ? "ON" : "OFF") << "\n";
+            gKeyPressed = true; }
+    } else { gKeyPressed = false; }
+
+    // WASD movement + collision resolution
     if (isCursorLocked) {
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera.ProcessKeyboard(FORWARD,  deltaTime);
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera.ProcessKeyboard(BACKWARD, deltaTime);
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera.ProcessKeyboard(LEFT,     deltaTime);
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.ProcessKeyboard(RIGHT,    deltaTime);
+        // Apply collision resolution after all movement
+        camera.Position = gCollision.resolvePlayer(camera.Position, gCollision.playerRadius);
     }
 }
 
@@ -390,23 +414,50 @@ int main() {
     glEnableVertexAttribArray(1);
     glBindVertexArray(0);
 
-    Board exhibitionBoard;
+    Board exhibitionBoard;   // centre partition (kept from original)
+
+    // ── Collision setup ───────────────────────────────────────────────────────
+    gCollision.setupRoomColliders();
+
+    // ── Texture manager + artwork ─────────────────────────────────────────────
+    TextureManager texMgr;
+    // Artwork paths — place images in assets/artwork/ to use real photos.
+    // Missing files get a unique-colour checkerboard automatically.
+    std::vector<glm::vec3> fallbackColors = {
+        {0.80f,0.40f,0.30f}, {0.30f,0.55f,0.75f}, {0.45f,0.70f,0.45f},
+        {0.75f,0.60f,0.30f}, {0.55f,0.35f,0.75f}, {0.35f,0.65f,0.70f}
+    };
+    std::vector<GLuint> artworkTextures;
+    const char* artPaths[] = {
+        "../assets/artwork/artwork1.jpg", "../assets/artwork/artwork2.jpg",
+        "../assets/artwork/artwork3.jpg", "../assets/artwork/artwork4.jpg",
+        "../assets/artwork/artwork5.jpg", "../assets/artwork/artwork6.jpg"
+    };
+    for (int i = 0; i < 6; ++i)
+        artworkTextures.push_back(texMgr.load(artPaths[i], fallbackColors[i]));
+
+    // ── Exhibition boards (6 side-wall panels) ────────────────────────────────
+    std::vector<ExhibitionBoard> exBoards = createExhibitionBoards(artworkTextures);
+
+    // Register board AABBs with collision system
+    std::vector<AABB> boardAABBs;
+    for (auto& b : exBoards) {
+        boardAABBs.push_back(b.colliderBounds);
+        gCollision.addBoardCollider(b.colliderBounds);
+    }
 
     // ── FPS diagnostic ────────────────────────────────────────────────────────
     float  fpsPrintTimer = 0.0f;
     int    frameCount    = 0;
 
     std::cout << "\n[InsideTheFrame] Controls:\n"
-              << "  WASD + Mouse : Navigate\n"
-              << "  L            : Cycle light preset (Candlelight / Fluorescent / Daylight)\n"
-              << "  F1           : Quality LOW     (no shadows, 4 lights)\n"
-              << "  F2           : Quality MEDIUM  (no shadows, 6 lights)\n"
-              << "  F3           : Quality HIGH    (shadows + PCF, 8 lights)\n"
-              << "  F4           : Quality ULTRA   (shadows + PCF, 8 lights, max res)\n"
-              << "  Q            : Step quality down one level\n"
-              << "  TAB          : Toggle cursor\n"
-              << "  F11          : Fullscreen\n"
-              << "  ESC          : Quit\n\n";
+              << "  WASD + Mouse : Navigate (collision enabled)\n"
+              << "  E            : Interact with exhibition board (face it, < 5m)\n"
+              << "  G            : Toggle collision debug wireframes\n"
+              << "  L            : Cycle light preset\n"
+              << "  F1-F4        : Quality LOW / MEDIUM / HIGH / ULTRA\n"
+              << "  Q            : Step quality down\n"
+              << "  TAB          : Toggle cursor  |  F11 : Fullscreen  |  ESC : Quit\n\n";
 
     // ==========================================================================
     //  RENDER LOOP
@@ -428,10 +479,28 @@ int main() {
         }
 
         processInput(window);
-
-        // Rebuild lights if preset changed (cheap rebuild each frame is fine
-        // since buildLightArray is trivial — no GL calls)
         buildLightArray(lights, gLighting.preset);
+
+        // ── E key: board interaction (raycasting) ─────────────────────────────
+        // Clear previous highlight
+        if (highlightedBoard >= 0) exBoards[highlightedBoard].highlighted = false;
+        highlightedBoard = -1;
+
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+            if (!eKeyPressed) {
+                int hit = CollisionSystem::raycastBoards(
+                    camera.Position, camera.Front, boardAABBs, 5.0f);
+                if (hit >= 0) {
+                    highlightedBoard = hit;
+                    exBoards[hit].highlighted = true;
+                    std::cout << "[Interaction] " << exBoards[hit].label << "\n"
+                              << "  " << exBoards[hit].description << "\n";
+                } else {
+                    std::cout << "[Interaction] No board in range. Face a board and get closer.\n";
+                }
+                eKeyPressed = true;
+            }
+        } else { eKeyPressed = false; }
 
         // ── Matrices ──────────────────────────────────────────────────────────
         int currentWidth, currentHeight;
@@ -508,17 +577,36 @@ int main() {
 
         glBindVertexArray(0);
 
-        // ── Render exhibition board ───────────────────────────────────────────
+        // ── Render centre partition board (original) ──────────────────────────
         boardShader.use();
-        boardShader.setMat4("projection",      projection);
-        boardShader.setMat4("view",            view);
-        boardShader.setMat4("model",           boardModel);
-        boardShader.setVec3("viewPos",         camera.Position);
+        boardShader.setMat4("projection", projection);
+        boardShader.setMat4("view",       view);
+        boardShader.setMat4("model",      boardModel);
+        boardShader.setVec3("viewPos",    camera.Position);
         uploadSharedUniforms(boardShader, lights, currentTime, gLighting.shadowMap);
-
+        boardShader.setInt("useTexture",  0);
+        boardShader.setInt("highlighted", 0);
         glBindVertexArray(exhibitionBoard.VAO);
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindVertexArray(0);
+
+        // ── Render 6 exhibition boards ────────────────────────────────────────
+        boardShader.use();
+        boardShader.setMat4("projection", projection);
+        boardShader.setMat4("view",       view);
+        boardShader.setVec3("viewPos",    camera.Position);
+        uploadSharedUniforms(boardShader, lights, currentTime, gLighting.shadowMap);
+        for (auto& b : exBoards)
+            b.draw(boardShader.ID);
+
+        // ── Debug: wireframe AABB overlay ─────────────────────────────────────
+        if (debugWireframe)
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        if (debugWireframe) {
+            // Re-render boards as wireframe to show colliders
+            for (auto& b : exBoards) b.draw(boardShader.ID);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -527,6 +615,7 @@ int main() {
     // ── Cleanup ───────────────────────────────────────────────────────────────
     glDeleteVertexArrays(1, &roomVAO);
     glDeleteBuffers(1, &roomVBO);
+    texMgr.cleanup();
     gLighting.shadowMap.cleanup();
     glfwTerminate();
     return 0;
