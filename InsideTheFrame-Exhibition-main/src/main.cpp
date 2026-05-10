@@ -425,15 +425,17 @@ int main() {
     // Missing files get a unique-colour checkerboard automatically.
     std::vector<glm::vec3> fallbackColors = {
         {0.80f,0.40f,0.30f}, {0.30f,0.55f,0.75f}, {0.45f,0.70f,0.45f},
-        {0.75f,0.60f,0.30f}, {0.55f,0.35f,0.75f}, {0.35f,0.65f,0.70f}
+        {0.75f,0.60f,0.30f}, {0.55f,0.35f,0.75f}, {0.35f,0.65f,0.70f},
+        {0.70f,0.50f,0.80f}, {0.60f,0.65f,0.40f}   // two extra for boards 7 & 8
     };
     std::vector<GLuint> artworkTextures;
     const char* artPaths[] = {
         "../assets/artwork/artwork1.jpg", "../assets/artwork/artwork2.jpg",
         "../assets/artwork/artwork3.jpg", "../assets/artwork/artwork4.jpg",
-        "../assets/artwork/artwork5.jpg", "../assets/artwork/artwork6.jpg"
+        "../assets/artwork/artwork5.jpg", "../assets/artwork/artwork6.jpg",
+        "../assets/artwork/artwork7.jpg", "../assets/artwork/artwork8.jpg"
     };
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 8; ++i)
         artworkTextures.push_back(texMgr.load(artPaths[i], fallbackColors[i]));
 
     // ── Exhibition boards (6 side-wall panels) ────────────────────────────────

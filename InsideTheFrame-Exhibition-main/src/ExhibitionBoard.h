@@ -72,9 +72,21 @@ public:
     }
 
     // Compute world-space AABB around the board (conservative — padded slightly)
+    // For boards rotated ±90° around Y (side-wall panels), local X (width) maps
+    // to world Z and local Z (depth 0.15) maps to world X, so we swap those extents.
     void computeColliderBounds() {
-        // Board local half-extents: ±0.5 on each axis before scale
-        glm::vec3 he = glm::abs(scale) * 0.5f + glm::vec3(0.05f);
+        // Half-extents in local space (width=X, height=Y, depth=Z)
+        float halfW = glm::abs(scale.x) * 0.5f + 0.05f;  // wide dimension
+        float halfH = glm::abs(scale.y) * 0.5f + 0.05f;  // vertical
+        float halfD = glm::abs(scale.z) * 0.5f + 0.05f;  // thin depth
+
+        glm::vec3 he;
+        // rotationY = ±90° → local X becomes world Z, local Z becomes world X
+        if (glm::abs(glm::abs(rotationY) - 90.0f) < 1.0f) {
+            he = glm::vec3(halfD, halfH, halfW);  // world: X=depth, Y=height, Z=width
+        } else {
+            he = glm::vec3(halfW, halfH, halfD);
+        }
         colliderBounds.min = position - he;
         colliderBounds.max = position + he;
     }
@@ -187,54 +199,74 @@ private:
 };
 
 // =============================================================================
-//  createExhibitionBoards — factory for the 6 side-wall gallery boards
-//  Boards alternate left/right wall at Z = -12, -4, +4, +12 (and more)
+//  createExhibitionBoards — factory for 8 side-wall gallery boards
+//
+//  Layout: 4 frames per wall, evenly spaced.
+//  Room Z range [-20, +20]. Usable zone (clear of front/back walls): ~±17.
+//  4 frames → spacing = 34 / 3 ≈ 11.33  → Z positions: -17, -5.67, +5.67, +17
+//  Rounded to clean values:              → Z = -15, -5, +5, +15
+//
+//  Wall X positions:
+//   Left wall  geometry is at X = -10.  Panel center (depth 0.15) → X = -9.925
+//   Right wall geometry is at X = +10.  Panel center              → X = +9.925
+//
+//  rotY =  90° → panel faces +X (inward from left wall)
+//  rotY = -90° → panel faces -X (inward from right wall)
 // =============================================================================
 inline std::vector<ExhibitionBoard> createExhibitionBoards(
         const std::vector<GLuint>& textureIds)
 {
-    // Board placements: {worldPos, rotY, scale, texIndex, label, desc}
     struct BoardDef {
         glm::vec3   pos;
-        float       rotY;    // 90 = face right wall inward, -90 = face left
+        float       rotY;
         glm::vec3   sc;
         int         texIdx;
         const char* label;
         const char* desc;
     };
 
-    // 6 boards: 3 per side wall.
-    // Left wall (X=-10) faces +X (rotY=90), right wall (X=+10) faces -X (rotY=-90)
+    // Uniform frame size: 3.0 wide × 2.2 tall × 0.15 deep
+    // Z positions for 4 evenly-spaced frames per wall
+    // spacing = (15 - (-15)) / 3 = 10  →  Z = -15, -5, +5, +15
     static const BoardDef defs[] = {
-        // Left wall boards (facing inward = +X direction)
-        { {-9.85f, 2.0f, -12.0f},  90.0f, {3.0f, 2.2f, 0.15f}, 0,
+        // ── Left wall (X = -9.925, rotY = +90°, faces inward) ────────────────
+        { {-9.925f, 2.0f, -15.0f},  90.0f, {3.0f, 2.2f, 0.15f}, 0,
           "Luminous Void",
           "Oil on canvas — exploring the tension between darkness and emerging light." },
 
-        { {-9.85f, 2.0f,   0.0f},  90.0f, {3.5f, 2.2f, 0.15f}, 1,
+        { {-9.925f, 2.0f,  -5.0f},  90.0f, {3.0f, 2.2f, 0.15f}, 1,
           "Urban Fragments",
           "Mixed media — deconstructed city textures layered with archival photographs." },
 
-        { {-9.85f, 2.0f,  12.0f},  90.0f, {3.0f, 2.2f, 0.15f}, 2,
+        { {-9.925f, 2.0f,   5.0f},  90.0f, {3.0f, 2.2f, 0.15f}, 2,
           "Threshold",
           "Digital print — liminal spaces and the geometry of transition." },
 
-        // Right wall boards (facing inward = -X direction)
-        { { 9.85f, 2.0f, -12.0f}, -90.0f, {3.0f, 2.2f, 0.15f}, 3,
+        { {-9.925f, 2.0f,  15.0f},  90.0f, {3.0f, 2.2f, 0.15f}, 3,
+          "Ephemeral Forms",
+          "Ink and resin — transient patterns frozen in amber-coloured resin sheets." },
+
+        // ── Right wall (X = +9.925, rotY = -90°, faces inward) ───────────────
+        { { 9.925f, 2.0f, -15.0f}, -90.0f, {3.0f, 2.2f, 0.15f}, 4,
           "Resonance",
           "Acrylic on board — sound waves rendered as colour fields." },
 
-        { { 9.85f, 2.0f,   0.0f}, -90.0f, {3.5f, 2.2f, 0.15f}, 4,
+        { { 9.925f, 2.0f,  -5.0f}, -90.0f, {3.0f, 2.2f, 0.15f}, 5,
           "Soft Architecture",
           "Photography — built environments softened by long exposure and mist." },
 
-        { { 9.85f, 2.0f,  12.0f}, -90.0f, {3.0f, 2.2f, 0.15f}, 5,
+        { { 9.925f, 2.0f,   5.0f}, -90.0f, {3.0f, 2.2f, 0.15f}, 6,
           "Chromatic Field",
           "Watercolour on paper — gradients as emotional landscape." },
+
+        { { 9.925f, 2.0f,  15.0f}, -90.0f, {3.0f, 2.2f, 0.15f}, 7,
+          "Silent Geometry",
+          "Graphite on panel — architectural silence distilled into pure form." },
     };
 
-    std::vector<ExhibitionBoard> boards(6);
-    for (int i = 0; i < 6; ++i) {
+    static const int NUM_BOARDS = 8;
+    std::vector<ExhibitionBoard> boards(NUM_BOARDS);
+    for (int i = 0; i < NUM_BOARDS; ++i) {
         const BoardDef& d = defs[i];
         bool hasTex = (d.texIdx < (int)textureIds.size());
         GLuint tex  = hasTex ? textureIds[d.texIdx] : 0;
